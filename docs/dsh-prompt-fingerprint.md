@@ -82,3 +82,33 @@ sha256: b16c081dc70bb1608846190640401f4fac375f4a9f78e2643d062790abf1da8a
 > 合并本补丁后**必须**先重打包并覆盖上传 `upstream-src` 载体 Release，再发面板版本：
 > 发布门禁会校验「随包上游里所有补丁都是 already applied」，资产没更新会直接报
 > 「仍有补丁需要现场应用」并阻断发布。
+
+
+## 2026-10-28 追加：`workspace root` 与可配置词表
+
+上游在 2026-10-27 又加了一个词：DSH 文件引用提示词里的
+`Relative paths resolve from the workspace root;`。社区二分实测触发点卡在 `root` 一词
+（`sys[:2075]` 放行、`sys[:2081]` 拒绝），把 `workspace root` 换成 `workspace base` 后
+同一份报文立刻 200。这句随每个请求的 system 发出，命中面比身份句还大。
+
+同一轮还补了两处：
+
+- 句式层的动词集合从 `powered by|built on` 扩到七个（补 `built by|created by|
+  developed by|made by|trained by`，社区实测集合）。
+- 特征预检改成大小写不敏感。原来 `contains` 是大小写敏感的，正文里大写复述的
+  `WORKSPACE ROOT` 会绕过预检，导致整条净化根本不执行（issue #246 的同类教训）。
+
+因为上游是**逐词扩充**黑名单的，每加一词就重编译镜像不现实，所以把词表开放成配置：
+
+```json
+"features": {
+  "sanitize_blacklist_fingerprints": true,
+  "sanitize_extra_features": ["你的新词"],
+  "sanitize_extra_rewrites": [["你的新词", "替换文本"]]
+}
+```
+
+`sanitize_extra_features` 进预检表（任一命中即进入净化），`sanitize_extra_rewrites` 做
+逐字替换。两者都是整体替换的幂等语义，改完 `config.json` 重启容器即生效，不必发版。
+
+补丁：`dev/upstream-patches/0032-dsh-workspace-root-and-sanitize-config.patch`。
